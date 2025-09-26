@@ -78,6 +78,10 @@ jobs:
             sleep 2
           done
       
+      - name: Install ts-node
+        run: npm install -g ts-node typescript
+        
+
       - name: Seed test data
         run: ts-node scripts/seed.ts
 

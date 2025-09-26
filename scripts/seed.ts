@@ -8,23 +8,23 @@ const client = new Client({ connectionString: process.env.DB_URL });
 (async () => {
   try {
     await client.connect();
-    console.log('✅ Connected to PostgreSQL');
+    console.log('Connected to PostgreSQL');
 
-    // 🏪 Seed store
+    // Seed store
     await client.query(`
       INSERT INTO store (store_id, manager_staff_id, address_id)
       VALUES (1, 1, 1)
       ON CONFLICT (store_id) DO NOTHING;
     `);
 
-    // 🏠 Seed address
+    // Seed address
     await client.query(`
       INSERT INTO address (address_id, address, city_id, postal_code, phone)
       VALUES (576, 'Test Street 123', 1, '12345', '555-1234')
       ON CONFLICT (address_id) DO NOTHING;
     `);
 
-    // 👤 Seed customer
+    // Seed customer
     await client.query(`
       INSERT INTO customer (
         customer_id, store_id, first_name, last_name, email, address_id, active, create_date
@@ -35,9 +35,9 @@ const client = new Client({ connectionString: process.env.DB_URL });
       ON CONFLICT (customer_id) DO NOTHING;
     `);
 
-    console.log('✅ Seed complete');
+    console.log('Seed complete');
   } catch (err) {
-    console.error('❌ Seed failed:', err instanceof Error ? err.message : err);
+    console.error('Seed failed:', err instanceof Error ? err.message : err);
   } finally {
     await client.end();
     console.log('🧹 Disconnected from PostgreSQL');
