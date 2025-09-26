@@ -5,10 +5,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PGPASSWORD: postgres
 
     services:
       postgres:
@@ -40,7 +43,7 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
-        
+
       - name: Install dependencies
         run: npm install
 
@@ -54,24 +57,19 @@ jobs:
 
       - name: Seed Pagila schema
         run: psql -h localhost -U postgres -d pagila -f ./scripts/pagila-schema.sql
-        env:
-          PGPASSWORD: postgres
 
       - name: Seed Pagila data
         run: psql -h localhost -U postgres -d pagila -f ./scripts/pagila-data.sql
-        env:
-          PGPASSWORD: postgres
 
       - name: Seed test customers
         run: psql -h localhost -U postgres -d pagila -f ./scripts/seed-customers.sql
-        env:
-          PGPASSWORD: postgres
-        
 
       - name: Check customer count
         run: psql -h localhost -U postgres -d pagila -c "SELECT COUNT(*) FROM customer;"
-        env:
-          PGPASSWORD: postgres
+
+      - name: Check test customer
+        run: psql -h localhost -U postgres -d pagila -c "SELECT * FROM customer WHERE customer_id = 1;"
+        continue-on-error: true
 
       - name: Start API server
         run: |
