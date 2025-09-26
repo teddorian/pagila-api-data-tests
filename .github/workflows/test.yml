@@ -33,6 +33,14 @@ jobs:
         with:
           node-version: 20
 
+      - name: Cache node_modules
+        uses: actions/cache@v3
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+        
       - name: Install dependencies
         run: npm install
 
@@ -53,6 +61,12 @@ jobs:
         run: psql -h localhost -U postgres -d pagila -f ./scripts/pagila-data.sql
         env:
           PGPASSWORD: postgres
+
+      - name: Seed test customers
+        run: psql -h localhost -U postgres -d pagila -f ./scripts/seed-customers.sql
+        env:
+          PGPASSWORD: postgres
+        
 
       - name: Check customer count
         run: psql -h localhost -U postgres -d pagila -c "SELECT COUNT(*) FROM customer;"
