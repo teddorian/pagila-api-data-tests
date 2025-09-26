@@ -22,4 +22,6 @@ app.get('/health/db', async (_, res) => {
 
 app.listen(3000, () => {
   console.log('Server running on http://localhost:3000');
+  console.log('DB_URL:', process.env.DB_URL);
+
 });
