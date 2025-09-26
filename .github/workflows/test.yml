@@ -61,9 +61,6 @@ jobs:
       - name: Seed Pagila data
         run: psql -h localhost -U postgres -d pagila -f ./scripts/pagila-data.sql
 
-      - name: Seed test customers
-        run: psql -h localhost -U postgres -d pagila -f ./scripts/seed-customers.sql
-
       - name: Check customer count
         run: psql -h localhost -U postgres -d pagila -c "SELECT COUNT(*) FROM customer;"
 
