@@ -68,6 +68,9 @@ jobs:
         run: psql -h localhost -U postgres -d pagila -c "SELECT * FROM customer WHERE customer_id = 1;"
         continue-on-error: true
 
+      - name: Install ts-node
+        run: npm install -g ts-node typescript
+
       - name: Start API server
         run: |
           set -x
@@ -77,10 +80,6 @@ jobs:
             echo "Waiting for API and DB..."
             sleep 2
           done
-      
-      - name: Install ts-node
-        run: npm install -g ts-node typescript
-        
 
       - name: Seed test data
         run: ts-node scripts/seed.ts

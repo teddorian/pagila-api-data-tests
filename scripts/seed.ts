@@ -10,19 +10,19 @@ const client = new Client({ connectionString: process.env.DB_URL });
     await client.connect();
     console.log('Connected to PostgreSQL');
 
-    // Seed store
-    await client.query(`
-      INSERT INTO store (store_id, manager_staff_id, address_id)
-      VALUES (1, 1, 1)
-      ON CONFLICT (store_id) DO NOTHING;
-    `);
+    // // Seed store
+    // await client.query(`
+    //   INSERT INTO store (store_id, manager_staff_id, address_id)
+    //   VALUES (1, 1, 1)
+    //   ON CONFLICT (store_id) DO NOTHING;
+    // `);
 
-    // Seed address
-    await client.query(`
-      INSERT INTO address (address_id, address, city_id, postal_code, phone)
-      VALUES (576, 'Test Street 123', 1, '12345', '555-1234')
-      ON CONFLICT (address_id) DO NOTHING;
-    `);
+    // // Seed address
+    // await client.query(`
+    //   INSERT INTO address (address_id, address, city_id, postal_code, phone)
+    //   VALUES (576, 'Test Street 123', 1, '12345', '555-1234')
+    //   ON CONFLICT (address_id) DO NOTHING;
+    // `);
 
     // Seed customer
     await client.query(`
