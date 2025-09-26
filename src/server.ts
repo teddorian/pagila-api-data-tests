@@ -12,6 +12,6 @@ const port = 3000;
 app.use(healthRouter);
 app.use('/api/customer', customerRoutes);
 
-app.listen(port, () => {
-  console.log(`Pagila API running at http://localhost:${port}`);
+app.listen(3000, '0.0.0.0', () => {
+  console.log(`Pagila API running at http://localhost:3000`);
 });

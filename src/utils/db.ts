@@ -3,15 +3,17 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+console.log('Connecting to DB:', process.env.DB_URL);
+
 const connectionString = process.env.DB_URL;
 if (!connectionString) {
   throw new Error('DB_URL is not defined in environment');
 }
 
-// 🔁 создаём пул соединений
+// создаём пул соединений
 const pool = new Pool({ connectionString });
 
-// 🧠 обёртка для запросов с логированием
+// обёртка для запросов с логированием
 export const query = async (text: string, params?: any[]) => {
   const start = Date.now();
   try {
