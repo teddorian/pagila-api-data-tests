@@ -49,6 +49,11 @@ jobs:
         env:
           PGPASSWORD: postgres
 
+      - name: Seed Pagila data
+        run: psql -h localhost -U postgres -d pagila -f ./scripts/pagila-data.sql
+        env:
+          PGPASSWORD: postgres
+
       - name: Start API server
         run: |
           npx ts-node src/server.ts &
