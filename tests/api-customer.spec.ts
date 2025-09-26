@@ -23,6 +23,7 @@ test('Customer API matches database', async () => {
   // Получаем данные из API
   const apiContext = await request.newContext();
   const apiResponse = await apiContext.get(`http://localhost:3000/api/customer/${customerId}`);
+  console.log('API status:', apiResponse.status());
   expect(apiResponse.ok()).toBeTruthy();
 
   const apiData = await apiResponse.json();

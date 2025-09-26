@@ -81,6 +81,8 @@ jobs:
             sleep 2
           done
       
+      - name: Seed customer data
+        run: psql "$DB_URL" -f scripts/seed-customer.sql
 
       - name: Run Playwright tests
         run: npx playwright test
