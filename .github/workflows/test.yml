@@ -1,4 +1,4 @@
-name: Run Playwright API Tests
+name: API Data Tests
 
 on:
   push:
@@ -9,6 +9,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pagila
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -21,6 +35,24 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..10}; do
+            nc -z localhost 5432 && break
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Seed Pagila schema
+        run: psql -h localhost -U postgres -d pagila -f ./scripts/pagila-schema.sql
+        env:
+          PGPASSWORD: postgres
+
+      - name: Start API server
+        run: |
+          npx ts-node src/server.ts &
+          sleep 3
 
       - name: Run Playwright tests
         run: npx playwright test
