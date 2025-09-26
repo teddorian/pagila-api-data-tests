@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PGPASSWORD: postgres
+      DB_URL: postgres://postgres:postgres@localhost:5432/pagila
 
     services:
       postgres:
@@ -86,5 +87,4 @@ jobs:
 
       - name: Run Playwright tests
         run: npx playwright test
-        env:
-          DB_URL: postgres://postgres:postgres@localhost:5432/pagila
+        
