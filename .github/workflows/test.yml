@@ -47,7 +47,7 @@ jobs:
       - name: Seed Pagila schema
         run: psql -h localhost -U postgres -d pagila -f ./scripts/pagila-schema.sql
         env:
-          PGPASSWORD: qwerty123
+          PGPASSWORD: postgres
 
       - name: Start API server
         run: |
