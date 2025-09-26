@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { Pool } from 'pg';
+import dotenv from 'dotenv';
+
+dotenv.config();
+const pool = new Pool({ connectionString: process.env.DB_URL });
 
 const router = Router();
-const pool = new Pool({ connectionString: process.env.DB_URL });
 
 router.get('/:id', async (req, res) => {
   try {

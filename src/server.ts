@@ -1,18 +1,25 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import customerRoutes from './routes/customer';
-import healthRouter from './routes/health';
-
+import customerRouter from './routes/customer';
+import { Pool } from 'pg';
 
 dotenv.config();
 const app = express();
 app.use(express.json());
-const port = 3000;
 
-// 📦 Подключаем маршруты
-app.use(healthRouter);
-app.use('/api/customer', customerRoutes);
+const pool = new Pool({ connectionString: process.env.DB_URL });
 
-app.listen(3000, '0.0.0.0', () => {
-  console.log(`Pagila API running at http://localhost:3000`);
+app.use('/api/customer', customerRouter);
+
+app.get('/health/db', async (_, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ db: 'connected' });
+  } catch {
+    res.status(500).json({ db: 'error' });
+  }
+});
+
+app.listen(3000, () => {
+  console.log('Server running on http://localhost:3000');
 });
