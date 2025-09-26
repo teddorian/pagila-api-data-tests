@@ -28,6 +28,8 @@ test('Customer API matches database', async () => {
   // Получаем данные напрямую из базы
   const dbResult = await client.query('SELECT * FROM customer WHERE customer_id = $1', [customerId]);
   const dbData = dbResult.rows[0];
+  console.log('API Data:', apiData);
+  console.log('DB Data:', dbData);
 
   // Сравниваем ключевые поля
   expect(apiData.first_name).toBe(dbData.first_name);
