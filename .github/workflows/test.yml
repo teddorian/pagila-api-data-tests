@@ -54,10 +54,15 @@ jobs:
         env:
           PGPASSWORD: postgres
 
+      - name: Check customer count
+        run: psql -h localhost -U postgres -d pagila -c "SELECT COUNT(*) FROM customer;"
+        env:
+          PGPASSWORD: postgres
+
       - name: Start API server
         run: |
           npx ts-node src/server.ts &
-          sleep 3
+          sleep 5
 
       - name: Run Playwright tests
         run: npx playwright test
