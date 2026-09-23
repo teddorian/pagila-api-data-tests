@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  playwright:
+    name: TypeScript / Playwright
     runs-on: ubuntu-latest
     env:
       PGPASSWORD: postgres
@@ -37,24 +38,8 @@ jobs:
         with:
           node-version: 20
 
-      - name: Cache node_modules
-        uses: actions/cache@v3
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
       - name: Install dependencies
         run: npm install
-
-      - name: Wait for PostgreSQL
-        run: |
-          for i in {1..10}; do
-            nc -z localhost 5432 && break
-            echo "Waiting for PostgreSQL..."
-            sleep 2
-          done
 
       - name: Seed Pagila schema
         run: psql -h localhost -U postgres -d pagila -f ./scripts/pagila-schema.sql
@@ -62,29 +47,88 @@ jobs:
       - name: Seed Pagila data
         run: psql -h localhost -U postgres -d pagila -f ./scripts/pagila-data.sql
 
-      - name: Check customer count
-        run: psql -h localhost -U postgres -d pagila -c "SELECT COUNT(*) FROM customer;"
-
-      - name: Check test customer
-        run: psql -h localhost -U postgres -d pagila -c "SELECT * FROM customer WHERE customer_id = 1;"
-        continue-on-error: true
-
-      - name: Install ts-node
-        run: npm install -g ts-node typescript
-
       - name: Start API server
         run: |
-          set -x
           npx ts-node src/server.ts &
-          for i in {1..10}; do
+          for i in {1..15}; do
             curl -s http://localhost:3000/health/db | grep '"db":"connected"' && break
             echo "Waiting for API and DB..."
             sleep 2
           done
 
       - name: Seed test data
-        run: ts-node scripts/seed.ts
+        run: npx ts-node scripts/seed.ts
 
       - name: Run Playwright tests
         run: npx playwright test
-        
+
+  pytest:
+    name: Python / PyTest
+    runs-on: ubuntu-latest
+    env:
+      PGPASSWORD: postgres
+      DB_URL: postgres://postgres:postgres@localhost:5432/pagila
+      API_BASE_URL: http://localhost:3000
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pagila
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Node dependencies
+        run: npm install
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Seed Pagila schema
+        run: psql -h localhost -U postgres -d pagila -f ./scripts/pagila-schema.sql
+
+      - name: Seed Pagila data
+        run: psql -h localhost -U postgres -d pagila -f ./scripts/pagila-data.sql
+
+      - name: Start API server
+        run: |
+          npx ts-node src/server.ts &
+          for i in {1..15}; do
+            curl -s http://localhost:3000/health/db | grep '"db":"connected"' && break
+            echo "Waiting for API and DB..."
+            sleep 2
+          done
+
+      - name: Seed test data
+        run: npx ts-node scripts/seed.ts
+
+      - name: Run PyTest suite
+        run: pytest --junitxml=pytest-report.xml
+
+      - name: Upload PyTest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: pytest-report.xml
