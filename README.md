@@ -76,11 +76,13 @@ tests/
    npx ts-node src/server.ts
    ```
 
-4. In a separate terminal, seed the specific test customer row the test expects:
+4. In a separate terminal, run the seed script:
 
    ```
    npx ts-node scripts/seed.ts
    ```
+
+   Note: at this point `customer_id = 1` already exists from the Pagila sample data (as "MARY SMITH"), and `seed.ts` inserts with `ON CONFLICT (customer_id) DO NOTHING`, so this step currently has no effect in this order — see [Notes](#notes).
 
 5. Run the tests:
 
@@ -100,8 +102,9 @@ On every push and pull request to `main`, the GitHub Actions workflow (`.github/
 
 ## Notes
 
-- There is currently one test: it verifies that `GET /api/customer/:id` returns data matching the corresponding row in the `customer` table.
-- There is no `playwright.config.ts` in the repository; Playwright runs with its default configuration.
+- There is currently one test: it verifies that `GET /api/customer/:id` returns data matching the corresponding row in the `customer` table. As currently seeded, this validates against Pagila's own sample row for `customer_id = 1` ("MARY SMITH"), not a custom fixture.
+- `scripts/seed.ts` inserts a row for `customer_id = 1` using `ON CONFLICT (customer_id) DO NOTHING`. Since the Pagila sample data already contains a row with `customer_id = 1`, running `seed.ts` after loading `pagila-data.sql` — as both the local steps above and the CI workflow currently do — is a no-op: verified by running the sequence end-to-end, the customer record is unchanged before and after the seed step. To make the seed script take effect, it would need to run against an empty `customer` table, or use a customer ID that isn't already in the Pagila sample data, or use `ON CONFLICT ... DO UPDATE`.
+- There is no `playwright.config.ts` in the repository; Playwright runs with its default configuration. This works here because the single test uses Playwright's `request` fixture for API/HTTP calls only — no browser is launched, so no browser install step is required.
 - `src/controllers/customerController.ts` and `src/routes/health.ts` are present in the source tree but are not currently wired into `src/server.ts`.
 
 ## About
