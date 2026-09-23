@@ -1,14 +1,27 @@
 {
   "name": "pagila-api-data-tests",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "src/server.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "ts-node src/server.ts",
+    "seed": "ts-node scripts/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "test:ts": "playwright test",
+    "test:py": "pytest"
   },
-  "keywords": [],
+  "keywords": [
+    "testing",
+    "api-testing",
+    "playwright",
+    "pytest",
+    "json-schema",
+    "postgresql",
+    "pagila"
+  ],
   "author": "",
-  "license": "ISC",
-  "description": "",
+  "license": "MIT",
+  "description": "API and data-consistency tests for a Pagila-backed Express API, in two parallel stacks: TypeScript/Playwright and Python/PyTest.",
   "dependencies": {
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
@@ -16,7 +29,6 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.55.1",
-    "@types/dotenv": "^6.1.1",
     "@types/express": "^5.0.3",
     "@types/node": "^24.5.2",
     "@types/pg": "^8.15.5",
