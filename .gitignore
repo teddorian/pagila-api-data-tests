@@ -1,0 +1,13 @@
+# Node
+node_modules/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local config & artifacts
+.env
+test-results/
+playwright-report/
