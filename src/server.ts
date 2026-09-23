@@ -1,27 +1,20 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import customerRouter from './routes/customer';
-import { Pool } from 'pg';
+import healthRouter from './routes/health';
 
 dotenv.config();
+
 const app = express();
 app.use(express.json());
 
-const pool = new Pool({ connectionString: process.env.DB_URL });
-
+app.use('/', healthRouter);
 app.use('/api/customer', customerRouter);
 
-app.get('/health/db', async (_, res) => {
-  try {
-    await pool.query('SELECT 1');
-    res.json({ db: 'connected' });
-  } catch {
-    res.status(500).json({ db: 'error' });
-  }
+const PORT = Number(process.env.PORT ?? 3000);
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });
 
-app.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
-  console.log('DB_URL:', process.env.DB_URL);
-
-});
+export default app;

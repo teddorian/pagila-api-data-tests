@@ -1,15 +1,14 @@
 import { Router } from 'express';
-import { Pool } from 'pg';
-import dotenv from 'dotenv';
-
-dotenv.config();
-const pool = new Pool({ connectionString: process.env.DB_URL });
+import { query } from '../utils/db';
+import { createCustomer } from '../controllers/customerController';
 
 const router = Router();
 
+router.post('/', createCustomer);
+
 router.get('/:id', async (req, res) => {
   try {
-    const result = await pool.query(
+    const result = await query(
       'SELECT customer_id, first_name, last_name, email FROM customer WHERE customer_id = $1',
       [req.params.id]
     );
@@ -18,10 +17,10 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Customer not found' });
     }
 
-    res.json(result.rows[0]);
+    return res.json(result.rows[0]);
   } catch (err) {
-    console.error('API error:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
+    console.error('GET /api/customer/:id failed:', err instanceof Error ? err.message : err);
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
