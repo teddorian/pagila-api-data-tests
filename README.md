@@ -1,112 +1,184 @@
-# Pagila API Data Tests
+# Pagila API — Data & Contract Tests
 
-A small TypeScript learning project that checks a REST API's responses against the underlying PostgreSQL data directly, using Playwright's API request testing. It runs on top of [Pagila](https://github.com/devrimgunduz/pagila), the standard PostgreSQL port of the "Sakila" DVD-rental sample database.
+A small Express API over the [Pagila](https://github.com/devrimgunduz/pagila) sample database,
+tested by **two independent suites written in different stacks**:
 
-## What this project does
+| Suite | Stack | Location |
+| --- | --- | --- |
+| Contract + data consistency | TypeScript, Playwright | [`tests/`](tests/) |
+| JSON Schema + contract + data consistency | Python, PyTest, `jsonschema`, `psycopg2` | [`tests_python/`](tests_python/) |
 
-- Runs a minimal Express API backed by a Pagila PostgreSQL database.
-- Exposes `GET /api/customer/:id`, returning a customer record as JSON.
-- A Playwright test (`tests/api-customer.spec.ts`) calls that endpoint, then queries the same row directly from PostgreSQL, and asserts that the API response matches the database row (`first_name`, `last_name`, `email`).
-- Runs automatically in CI (GitHub Actions) against a disposable Postgres 15 service container, seeded with the Pagila schema and data on every run.
+Both hit the same endpoint on the same database, and both run in parallel on every push
+via GitHub Actions. The point of keeping two is deliberate: the same behaviour described
+twice, in two languages, is a useful way to show that the tests describe the *API* rather
+than the *test framework*.
+
+[![API Data Tests](https://github.com/teddorian/pagila-api-data-tests/actions/workflows/test.yml/badge.svg)](../../actions/workflows/test.yml)
 
 ## Tech stack
 
-- TypeScript / Node.js
-- Express — REST API server
-- [pg](https://node-postgres.com/) — PostgreSQL client
-- [@playwright/test](https://playwright.dev/) — API-level test runner and assertions
-- GitHub Actions — CI pipeline
-- PostgreSQL 15 (Pagila sample database)
+- **Runtime** — TypeScript / Node.js 20, Express, [pg](https://node-postgres.com/)
+- **Tests** — [@playwright/test](https://playwright.dev/) (TypeScript) and
+  [PyTest](https://docs.pytest.org/) with
+  [`requests`](https://requests.readthedocs.io/),
+  [`jsonschema`](https://python-jsonschema.readthedocs.io/) and
+  [`psycopg2`](https://www.psycopg.org/) (Python 3.12)
+- **Database** — PostgreSQL 15, loaded with the Pagila sample data
+- **CI** — GitHub Actions, two parallel jobs against a disposable Postgres service container
 
-## Project structure
+---
+
+## The API
+
+| Method | Path | Response |
+| --- | --- | --- |
+| `GET` | `/health` | `{ "status": "ok" }` |
+| `GET` | `/health/db` | `{ "status": "ok", "db": "connected" }`, or `500` with `"db": "unreachable"` |
+| `GET` | `/api/customer/:id` | `{ customer_id, first_name, last_name, email }`, or `404` `{ "error": "Customer not found" }` |
+| `POST` | `/api/customer` | `201` with the same four fields. Requires `first_name`, `last_name`, `store_id`, `address_id`; `email` is optional. `400` with `{ "error": ... }` on a missing field, a non-integer id, or an unknown `store_id`/`address_id`. |
 
 ```
 src/
-  server.ts               # Express app entry point; mounts the customer router,
-                           # exposes GET /health/db
-  routes/
-    customer.ts            # GET /api/customer/:id
-    health.ts               # standalone health-check router (not currently mounted in server.ts)
-  controllers/
-    customerController.ts   # customer-creation logic (not currently wired to a route)
-  utils/
-    db.ts                    # pg connection pool + logging query wrapper
-
+  server.ts                  Express app wiring
+  routes/customer.ts         GET /api/customer/:id
+  routes/health.ts           liveness + database readiness
+  utils/db.ts                pg connection pool with query timing
+  controllers/customerController.ts   POST /api/customer
 scripts/
-  seed.ts                    # inserts the one test customer row the test checks against
-  pagila-schema.sql           # Pagila database schema
-  pagila-data.sql             # Pagila sample data dump
-
-tests/
-  api-customer.spec.ts        # the API <-> database reconciliation test
-
-.github/workflows/test.yml    # CI pipeline: starts Postgres, loads Pagila, starts the API, runs the tests
+  pagila-schema.sql          Pagila DDL
+  pagila-data.sql            Pagila fixture data
+  seed.ts                    inserts the deterministic test customer
 ```
 
-## Prerequisites
+---
 
-- Node.js 20+
-- A running PostgreSQL instance loaded with the Pagila schema and data (`scripts/pagila-schema.sql`, `scripts/pagila-data.sql`)
-- A `.env` file in the project root with a `DB_URL` connection string, e.g.
+## Setup
 
-  ```
-  DB_URL=postgres://<user>:<password>@localhost:5432/pagila
-  ```
+Requires Node.js 20+, Python 3.12+ and a local PostgreSQL 15+.
 
-  Keep real credentials out of version control — use a local, non-production password and add `.env` to `.gitignore`.
+```bash
+git clone https://github.com/teddorian/pagila-api-data-tests.git
+cd pagila-api-data-tests
+npm install
 
-## Running locally
+cp .env.example .env          # then edit DB_URL to match your Postgres
+```
 
-1. Install dependencies:
+Load the database:
 
-   ```
-   npm install
-   ```
+```bash
+createdb pagila
+psql -d pagila -f scripts/pagila-schema.sql
+psql -d pagila -f scripts/pagila-data.sql
+npm run seed                  # see the note on seeding below
+```
 
-2. Load the Pagila schema and sample data into your Postgres database:
+Start the API (leave it running in its own shell):
 
-   ```
-   psql -h localhost -U postgres -d pagila -f scripts/pagila-schema.sql
-   psql -h localhost -U postgres -d pagila -f scripts/pagila-data.sql
-   ```
+```bash
+npm start                     # http://localhost:3000
+```
 
-3. Start the API server:
+---
 
-   ```
-   npx ts-node src/server.ts
-   ```
+## Running the tests
 
-4. In a separate terminal, run the seed script:
+### TypeScript / Playwright
 
-   ```
-   npx ts-node scripts/seed.ts
-   ```
+```bash
+npm run test:ts
+```
 
-   Note: at this point `customer_id = 1` already exists from the Pagila sample data (as "MARY SMITH"), and `seed.ts` inserts with `ON CONFLICT (customer_id) DO NOTHING`, so this step currently has no effect in this order — see [Notes](#notes).
+Checks that `GET /api/customer/1` returns the values that a direct `pg` query returns for
+the same row.
 
-5. Run the tests:
+### Python / PyTest
 
-   ```
-   npx playwright test
-   ```
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-## Continuous Integration
+npm run test:py               # or: pytest
+pytest -m schema              # only the JSON Schema checks
+pytest -m contract            # only status codes and error payloads
+pytest -m data                # only API-vs-database consistency
+pytest --base-url http://localhost:3000
+```
 
-On every push and pull request to `main`, the GitHub Actions workflow (`.github/workflows/test.yml`):
+34 tests across three markers, split into
+[`test_api_customer.py`](tests_python/test_api_customer.py) (reads) and
+[`test_api_customer_create.py`](tests_python/test_api_customer_create.py) (writes):
 
-1. Spins up a disposable PostgreSQL 15 service container.
-2. Loads the Pagila schema and sample data.
-3. Starts the Express API and waits for its `/health/db` check to report a successful database connection.
-4. Seeds the one test customer row.
-5. Runs the Playwright test suite against the live API and database.
+- **`schema`** — the response body is validated against a strict JSON Schema
+  (`tests_python/schemas/customer.schema.json`, draft 2020-12): field types, required
+  fields, `format: email`, `maxLength` matching the canonical Pagila column widths, and
+  `additionalProperties: false` so that a newly added database column cannot silently
+  leak into the public response. The same schema is applied to the `201` body of
+  `POST /api/customer`, which is how the two endpoints are held to one contract. A
+  separate test asserts that no internal column (`address_id`, `store_id`, `activebool`,
+  …) appears in either payload.
+- **`contract`** — `404` for an unknown id with the error body validated against its own
+  schema, rejection of malformed ids (`abc`, `1.5`, `-1`, whitespace, an injection-shaped
+  string), a `400` for each individually omitted required field on `POST`, non-integer
+  and out-of-range ids, a foreign key violation surfacing as `400` rather than `500`, and
+  the health endpoints.
+- **`data`** — the API response is compared field by field against a direct `psycopg2`
+  query, so a serialisation bug in the route cannot pass unnoticed. Newly created
+  customers are read back both from the database and through `GET`, and every row a test
+  inserts is removed in teardown, so the suite is repeatable against a long-lived
+  database.
+
+See [`tests_python/README.md`](tests_python/README.md) for details.
+
+### Type checking
+
+```bash
+npm run typecheck
+```
+
+---
+
+## Known defect, documented by a test
+
+`GET /api/customer/abc` currently answers **500**, not **400**: a non-numeric id is passed
+straight to PostgreSQL, and the parse error surfaces as an internal server error.
+
+This is captured by `test_malformed_id_should_return_400`, marked `xfail(strict=True)` —
+it is expected to fail today, and it will turn into a *failure* the moment the route is
+fixed, at which point the marker should be removed. The bug is described by a test rather
+than by a comment, so it cannot quietly disappear.
+
+---
+
+## CI
+
+[`.github/workflows/test.yml`](.github/workflows/test.yml) runs two jobs in parallel on
+every push and pull request to `main`. Each job stands up a PostgreSQL 15 service
+container, loads the Pagila schema and data, seeds the test customer, starts the API, and
+then runs its own suite. The PyTest job also uploads a JUnit XML report as a build
+artifact.
+
+---
 
 ## Notes
 
-- There is currently one test: it verifies that `GET /api/customer/:id` returns data matching the corresponding row in the `customer` table. As currently seeded, this validates against Pagila's own sample row for `customer_id = 1` ("MARY SMITH"), not a custom fixture.
-- `scripts/seed.ts` inserts a row for `customer_id = 1` using `ON CONFLICT (customer_id) DO NOTHING`. Since the Pagila sample data already contains a row with `customer_id = 1`, running `seed.ts` after loading `pagila-data.sql` — as both the local steps above and the CI workflow currently do — is a no-op: verified by running the sequence end-to-end, the customer record is unchanged before and after the seed step. To make the seed script take effect, it would need to run against an empty `customer` table, or use a customer ID that isn't already in the Pagila sample data, or use `ON CONFLICT ... DO UPDATE`.
-- There is no `playwright.config.ts` in the repository; Playwright runs with its default configuration. This works here because the single test uses Playwright's `request` fixture for API/HTTP calls only — no browser is launched, so no browser install step is required.
-- `src/controllers/customerController.ts` and `src/routes/health.ts` are present in the source tree but are not currently wired into `src/server.ts`.
+- **`scripts/seed.ts` is currently a no-op in the documented order.** It inserts a row for
+  `customer_id = 1` with `ON CONFLICT (customer_id) DO NOTHING`, but `pagila-data.sql`
+  already contains that id (Pagila's own "MARY SMITH"), so nothing is written — both the
+  local steps above and the CI workflow load the sample data first. The tests therefore
+  assert against Pagila's sample row rather than a custom fixture, which is fine for a
+  reconciliation test but worth knowing. Making the seed take effect would mean running it
+  against an empty `customer` table, choosing an id outside the sample data, or switching
+  to `ON CONFLICT ... DO UPDATE`.
+- `.env` is not committed; copy `.env.example` and fill in your own connection string.
+- `DB_URL` is read from the environment by both the server and both test suites.
+- `API_BASE_URL` overrides the target host for both suites (defaults to
+  `http://localhost:3000`).
+
+---
 
 ## About
 
-Personal learning/practice project exploring API-to-database data reconciliation testing with Playwright and TypeScript, run through a CI pipeline on GitHub Actions.
+A practice project exploring API-to-database reconciliation testing: the same contract
+described twice, in two stacks, and enforced on every push by CI.
