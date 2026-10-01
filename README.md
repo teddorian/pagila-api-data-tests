@@ -106,13 +106,14 @@ pytest -m data                # only API-vs-database consistency
 pytest --base-url http://localhost:3000
 ```
 
-34 tests across three markers, split into
-[`test_api_customer.py`](tests_python/test_api_customer.py) (reads) and
-[`test_api_customer_create.py`](tests_python/test_api_customer_create.py) (writes):
+59 tests across three markers, split into
+[`test_api_customer.py`](tests_python/test_api_customer.py) (reads),
+[`test_api_customer_create.py`](tests_python/test_api_customer_create.py) (writes) and
+[`test_customer_integrity.py`](tests_python/test_customer_integrity.py) (database integrity):
 
 - **`schema`** — the response body is validated against a strict JSON Schema
   (`tests_python/schemas/customer.schema.json`, draft 2020-12): field types, required
-  fields, `format: email`, `maxLength` matching the canonical Pagila column widths, and
+  fields, `format: email`, `maxLength` taken from the classic Sakila column widths (the Pagila columns themselves are unbounded `text`, which is why the API must enforce them), and
   `additionalProperties: false` so that a newly added database column cannot silently
   leak into the public response. The same schema is applied to the `201` body of
   `POST /api/customer`, which is how the two endpoints are held to one contract. A
@@ -127,7 +128,14 @@ pytest --base-url http://localhost:3000
   query, so a serialisation bug in the route cannot pass unnoticed. Newly created
   customers are read back both from the database and through `GET`, and every row a test
   inserts is removed in teardown, so the suite is repeatable against a long-lived
-  database.
+  database. A created customer is joined back to `address` and `store` to prove the
+  relations were stored as requested, and a single `POST` must insert exactly one row.
+  Boundary values (names of 1 and 45 characters, including multibyte, and a 50-character
+  email) must round-trip unchanged.
+- **Integrity** (also under `data`) — read straight from the database: the column types
+  and nullability in `information_schema` match the JSON contract, the `address_id` and
+  `store_id` foreign keys exist, and there are no orphaned customers and no duplicate
+  emails.
 
 See [`tests_python/README.md`](tests_python/README.md) for details.
 
@@ -139,15 +147,19 @@ npm run typecheck
 
 ---
 
-## Known defect, documented by a test
+## Known defects, documented by tests
 
-`GET /api/customer/abc` currently answers **500**, not **400**: a non-numeric id is passed
-straight to PostgreSQL, and the parse error surfaces as an internal server error.
+Each defect below is captured by a test marked `xfail(strict=True)`: it is expected to fail
+today, and it will turn into a *failure* the moment the API is fixed, at which point the
+marker should be removed. The bugs are described by tests rather than by comments, so they
+cannot quietly disappear.
 
-This is captured by `test_malformed_id_should_return_400`, marked `xfail(strict=True)` —
-it is expected to fail today, and it will turn into a *failure* the moment the route is
-fixed, at which point the marker should be removed. The bug is described by a test rather
-than by a comment, so it cannot quietly disappear.
+| Defect | Test |
+| --- | --- |
+| `GET /api/customer/abc` answers **500**, not **400**: a non-numeric id is passed straight to PostgreSQL. | `test_malformed_id_should_return_400` |
+| A repeated `POST` with the same email (in any letter case) creates a duplicate customer: there is no unique constraint and no check in the route. | `test_repeated_post_with_same_email_is_rejected` |
+| An empty name or a name of 46+ characters is accepted, stored, and returned in breach of the schema's `minLength: 1` / `maxLength: 45`. The columns are unbounded `text` and the route only checks that the field is present. | `test_name_outside_the_boundary_returns_400` |
+| An email of 51+ characters is accepted, in breach of the schema's `maxLength: 50`. | `test_email_over_max_length_returns_400` |
 
 ---
 

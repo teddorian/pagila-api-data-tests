@@ -6,14 +6,15 @@ suites are meant to be read side by side.
 
 - `test_api_customer.py` — reads: `GET /api/customer/:id` and the health endpoints.
 - `test_api_customer_create.py` — writes: `POST /api/customer`.
+- `test_customer_integrity.py` — database integrity: column types vs. the contract, foreign keys, orphans, duplicate emails.
 
 ## What it checks
 
 | Marker | Focus |
 | --- | --- |
-| `schema` | The JSON body of `GET /api/customer/:id` **and** the `201` body of `POST /api/customer` validate against one strict JSON Schema (`schemas/customer.schema.json`): field types, required fields, `format: email`, `maxLength` matching the canonical Pagila column widths, and `additionalProperties: false` so a new column cannot silently leak into the API. |
+| `schema` | The JSON body of `GET /api/customer/:id` **and** the `201` body of `POST /api/customer` validate against one strict JSON Schema (`schemas/customer.schema.json`): field types, required fields, `format: email`, `maxLength` taken from the classic Sakila column widths (the Pagila columns themselves are unbounded `text`, which is why the API must enforce them), and `additionalProperties: false` so a new column cannot silently leak into the API. |
 | `contract` | Status codes and error payloads: `404` for an unknown id (validated against `schemas/error.schema.json`), rejection of malformed ids, a `400` per individually omitted required field on `POST`, non-integer and out-of-range ids, a foreign key violation returning `400` instead of `500`, and the health endpoints. |
-| `data` | The values the API returns are exactly the values stored in Postgres — the API response is compared against a direct `psycopg2` query. Created customers are read back both from the database and through `GET`. |
+| `data` | The values the API returns are exactly the values stored in Postgres — the API response is compared against a direct `psycopg2` query. Created customers are read back both from the database and through `GET`, joined to `address` and `store`, and boundary-length values must round-trip unchanged. The integrity file adds column types vs. the contract, foreign keys, orphans and duplicate emails. Known defects (duplicates, unbounded name and email length) are pinned as `xfail(strict=True)`. |
 
 ## Writes and cleanup
 

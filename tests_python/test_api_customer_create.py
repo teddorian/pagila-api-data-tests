@@ -4,6 +4,8 @@ Every test that creates a row registers its id with the `cleanup_customers`
 fixture, so the suite is repeatable against a long-lived database.
 """
 
+import uuid
+
 import pytest
 
 CUSTOMER_SQL = (
@@ -12,6 +14,20 @@ CUSTOMER_SQL = (
 )
 
 REQUIRED_FIELDS = ["first_name", "last_name", "store_id", "address_id"]
+
+# Limits published in customer.schema.json; the API must not create a row it
+# could then only return in breach of its own contract.
+NAME_MAX = 45
+EMAIL_MAX = 50
+EMAIL_DOMAIN = "@example.com"
+
+
+def unique_email(length=None):
+    """An address no other row uses, optionally padded to an exact length."""
+    local = f"pytest.{uuid.uuid4().hex}"
+    if length is not None:
+        local = local[: length - len(EMAIL_DOMAIN)].ljust(length - len(EMAIL_DOMAIN), "x")
+    return local + EMAIL_DOMAIN
 
 
 @pytest.fixture
@@ -145,3 +161,135 @@ def test_creating_a_customer_does_not_change_the_row_count_after_cleanup(
 
     after = db_row("SELECT COUNT(*) AS n FROM customer", ())["n"]
     assert after == before + 1
+
+
+@pytest.mark.data
+def test_created_customer_references_the_requested_store_and_address(create, db_row, valid_payload):
+    # Use the highest ids rather than the first customer's, so a route that
+    # ignored the payload and fell back to a default could not pass.
+    related = db_row(
+        "SELECT (SELECT MAX(store_id) FROM store) AS store_id, "
+        "(SELECT MAX(address_id) FROM address) AS address_id",
+        (),
+    )
+    valid_payload.update(related)
+
+    body = create(valid_payload).json()
+
+    stored = db_row(
+        """
+        SELECT c.store_id, c.address_id, a.address, s.store_id AS joined_store_id
+        FROM customer c
+        JOIN address a ON a.address_id = c.address_id
+        JOIN store s ON s.store_id = c.store_id
+        WHERE c.customer_id = %s
+        """,
+        (body["customer_id"],),
+    )
+    assert stored is not None, "the created customer does not join to its address and store"
+    assert stored["store_id"] == related["store_id"]
+    assert stored["address_id"] == related["address_id"]
+    assert stored["joined_store_id"] == related["store_id"]
+
+
+@pytest.mark.contract
+def test_unknown_store_id_returns_400_not_500(create, valid_payload, db_row):
+    valid_payload["store_id"] = db_row("SELECT MAX(store_id) + 1 AS id FROM store", ())["id"]
+
+    response = create(valid_payload)
+
+    assert response.status_code == 400, "a foreign key violation must not surface as a 500"
+    assert "store_id" in response.json()["error"]
+
+
+@pytest.mark.data
+def test_one_post_inserts_exactly_one_row(create, db_row, valid_payload):
+    valid_payload["email"] = unique_email()
+
+    create(valid_payload)
+
+    count = db_row("SELECT COUNT(*) AS n FROM customer WHERE email = %s", (valid_payload["email"],))
+    assert count["n"] == 1
+
+
+@pytest.mark.contract
+@pytest.mark.xfail(
+    strict=True,
+    reason="Known defect: customer.email has no unique constraint and the route does not "
+    "check for an existing customer, so a repeated POST creates a duplicate.",
+)
+def test_repeated_post_with_same_email_is_rejected(create, db_row, valid_payload):
+    valid_payload["email"] = unique_email()
+    assert create(valid_payload).status_code == 201
+
+    repeated = create(dict(valid_payload, email=valid_payload["email"].upper()))
+
+    count = db_row(
+        "SELECT COUNT(*) AS n FROM customer WHERE lower(email) = lower(%s)",
+        (valid_payload["email"],),
+    )
+    assert repeated.status_code in (400, 409), f"duplicate accepted with {repeated.status_code}"
+    assert count["n"] == 1
+
+
+@pytest.mark.data
+@pytest.mark.parametrize("field", ["first_name", "last_name"])
+@pytest.mark.parametrize(
+    "value",
+    ["A", "A" * NAME_MAX, "Ж" * NAME_MAX],
+    ids=["min-length", "max-length", "max-length-multibyte"],
+)
+def test_name_at_the_boundary_is_stored_exactly(create, db_row, assert_valid, valid_payload, field, value):
+    valid_payload[field] = value
+
+    response = create(valid_payload)
+
+    assert response.status_code == 201
+    assert_valid(response.json(), "customer.schema.json")
+    stored = db_row(CUSTOMER_SQL, (response.json()["customer_id"],))
+    assert stored[field] == value
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("field", ["first_name", "last_name"])
+@pytest.mark.parametrize(
+    "value",
+    ["", "A" * (NAME_MAX + 1)],
+    ids=["empty", "one-over-max"],
+)
+@pytest.mark.xfail(
+    strict=True,
+    reason="Known defect: the route only checks that names are present, and the columns are "
+    "unbounded text, so names outside 1..45 are stored and returned in breach of the schema.",
+)
+def test_name_outside_the_boundary_returns_400(create, valid_payload, field, value):
+    valid_payload[field] = value
+
+    response = create(valid_payload)
+
+    assert response.status_code == 400, f"{field} of length {len(value)} was accepted"
+
+
+@pytest.mark.data
+def test_email_at_max_length_is_stored_exactly(create, db_row, assert_valid, valid_payload):
+    valid_payload["email"] = unique_email(EMAIL_MAX)
+
+    response = create(valid_payload)
+
+    assert response.status_code == 201
+    assert_valid(response.json(), "customer.schema.json")
+    assert db_row(CUSTOMER_SQL, (response.json()["customer_id"],))["email"] == valid_payload["email"]
+
+
+@pytest.mark.contract
+@pytest.mark.xfail(
+    strict=True,
+    reason="Known defect: email length is not validated, so an address over 50 characters "
+    "is stored and returned in breach of the schema.",
+)
+def test_email_over_max_length_returns_400(create, valid_payload):
+    valid_payload["email"] = unique_email(EMAIL_MAX + 1)
+
+    response = create(valid_payload)
+
+    assert response.status_code == 400, "an email over the maximum length was accepted"
